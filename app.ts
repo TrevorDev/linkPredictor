@@ -9,19 +9,43 @@ function sigmoid(x){
   return 1 / (1 + Math.exp(-x));
 }
 
+function sigmoidDerivative(x){
+  return sigmoid(x)*(1-sigmoid(x))
+}
+
 class Edge {
-  weight:number = 1
+  derivative:number = 0
+  weight:number = 0
   inputNode: Vert
+  outputNode: Vert
+  getDerivative():number{
+    //todo dont repeat this
+    this.derivative = 0
+
+    if(this.outputNode.outputConnections.length == 0){
+      this.derivative = this.inputNode.val * this.outputNode.activePrime
+    }else{
+      this.derivative = this.outputNode.outputConnections.map(n=> this.inputNode.val * this.outputNode.activePrime * n.outputNode.activePrime * n.weight).reduce((prev, cur)=> prev+cur, 0)
+    }
+
+    return this.derivative
+  }
   constructor(){
     this.weight = randn_bm()
   }
 }
 class Vert {
   val:number = 0
+  activePrime:number = 0
   inputConnections:Edge[] = []
+  outputConnections:Edge[] = []
   compute(){
-    this.val = sigmoid(this.inputConnections.map((e)=>e.weight*e.inputNode.val).reduce((prev, cur)=> prev+cur, 0))
-    console.log(this.val)
+    this.val = sigmoid(this.inputConnections
+                              .map((e)=>e.weight*e.inputNode.val)
+                              .reduce((prev, cur)=> prev+cur, 0))
+    this.activePrime = sigmoidDerivative(this.inputConnections
+                              .map((e)=>e.weight*e.inputNode.val)
+                              .reduce((prev, cur)=> prev+cur, 0))
   }
   constructor(){
 
@@ -44,7 +68,7 @@ class Network {
     //setup input layer
     var inputLayer = this.layers[0]
     inputLayer.verticies.forEach((v, i)=>{
-      v.val = sigmoid(input[i])
+      v.val = input[i]//sigmoid(input[i])
     })
 
     //compute each layer
@@ -62,6 +86,39 @@ class Network {
   }
   train(inputLayer:number[], outputLayer:number[]){
     //TODO
+    var computed = this.compute(inputLayer)
+    var errDif = computed
+                  .map((x, index)=> (computed[index]-outputLayer[index]))
+    // var err = computed
+    //             .map((x, index)=> (1/2)*(computed[index]-outputLayer[index])*(computed[index]-outputLayer[index]))
+    //             .reduce((prev, cur)=> prev+cur, 0)
+    var derivativeStart = errDif.map((x)=> -x)
+
+    this.layers[this.layers.length-1].verticies.forEach((v, index)=>{
+      v.activePrime *= derivativeStart[index]
+    })
+
+    this.layers.forEach((l, index)=>{
+      if(index > 0){
+        l.verticies.forEach((v)=>{
+          v.inputConnections.forEach((e)=>{
+            e.getDerivative()
+          })
+        })
+      }
+    })
+
+    this.layers.forEach((l, index)=>{
+      if(index > 0){
+        l.verticies.forEach((v)=>{
+          v.inputConnections.forEach((e)=>{
+            e.weight += e.derivative * 0.5;
+            //console.log(e.derivative)
+          })
+        })
+      }
+    })
+
   }
   constructor(layerSizes:number[]){
     //initialize unconnected layers
@@ -77,7 +134,9 @@ class Network {
           curLayer.verticies.forEach((curVert)=>{
             var edge = new Edge()
             edge.inputNode = prevVert
+            edge.outputNode = curVert
             curVert.inputConnections.push(edge)
+            prevVert.outputConnections.push(edge)
           })
         })
       }
@@ -85,26 +144,30 @@ class Network {
   }
 }
 var main = async ()=>{
-  var nn = new Network([2,2,2])
-  nn.train([2,3], [3, 6])
-  nn.train([5,2], [6, 10])
-  nn.train([1,1], [2, 1])
-  console.log(nn.compute([5,3]))
+  var nn = new Network([2,5,2])
+  for(var i =0; i<10000;i++){
+    //nn.train([2,3], [0.5,0.5])
+    nn.train([0,0],[0,0])
+    nn.train([1,0],[0,1])
+    nn.train([1,1],[1,1])
+    nn.train([0,1],[0,1])
+    // nn.train([1,1], [0,0])
+  }
 
-  // var trainInput = []
-  // var expectedOutput = []
-  //
-  // for(var i=0;i<2;i++){
-  //   for(var j=0;j<5;j++){
-  //     for(var k=0;k<2;k++){
-  //       var inputSet = [i,j,k]
-  //       var outputSet = [(i+j+k)/(1+j), Math.tanh(j)]
-  //       trainInput.push(inputSet)
-  //       expectedOutput.push(outputSet)
-  //     }
-  //   }
-  // }
-  // console.log(trainInput)
-  // console.log(expectedOutput)
+  console.log(nn.compute([0,0]))
+  console.log(nn.compute([0,1]))
+  console.log(nn.compute([1,1]))
+  nn.layers.forEach((l, index)=>{
+    if(index == nn.layers.length-1){
+      return
+    }
+    l.verticies.forEach((v)=>{
+      v.outputConnections.forEach(c => {
+        //console.log(c.weight)
+      })
+    })
+  })
 }
-main()
+  main().catch((e)=>{
+    console.log(e)
+  })
